@@ -9,11 +9,32 @@ class RegiondoCatalogWrapper extends HTMLElement {
 
     this.style.display = "block";
     this.style.width = "100%";
-    this.style.minHeight = "300px";
     this.style.overflow = "hidden";
+    this.style.minHeight = "300px";
 
     this.innerHTML = `
-      <product-catalog-widget widget-id="${widgetId}"></product-catalog-widget>
+      <style>
+        :host {
+          display: block;
+          width: 100%;
+          overflow: hidden !important;
+        }
+
+        #regiondo-wrapper {
+          width: 100%;
+          overflow: hidden !important;
+        }
+
+        product-catalog-widget {
+          display: block;
+          width: 100%;
+          overflow: hidden !important;
+        }
+      </style>
+
+      <div id="regiondo-wrapper">
+        <product-catalog-widget widget-id="${widgetId}"></product-catalog-widget>
+      </div>
     `;
 
     this.loadRegiondoScript();
@@ -33,41 +54,105 @@ class RegiondoCatalogWrapper extends HTMLElement {
   }
 
   startHeightWatcher() {
-    const updateHeight = () => {
-      const widget = this.querySelector("product-catalog-widget");
+    const wrapper = this.querySelector("#regiondo-wrapper");
+    const widget = this.querySelector("product-catalog-widget");
 
-      let height = 300;
+    const getRealHeight = () => {
+      const candidates = [];
 
-      if (widget) {
-        height = Math.max(
-          widget.scrollHeight,
-          widget.offsetHeight,
-          this.scrollHeight,
-          300
-        );
+      candidates.push(wrapper);
+      candidates.push(widget);
+
+      if (widget && widget.shadowRoot) {
+        widget.shadowRoot.querySelectorAll("*").forEach((el) => {
+          const rect = el.getBoundingClientRect();
+
+          if (rect.height > 50 && rect.height < 3000) {
+            candidates.push(el);
+          }
+        });
       }
 
-      this.style.height = `${height}px`;
+      let bestHeight = 300;
+
+      candidates.forEach((el) => {
+        if (!el) return;
+
+        const rect = el.getBoundingClientRect();
+        const style = window.getComputedStyle(el);
+
+        if (
+          style.display === "none" ||
+          style.visibility === "hidden" ||
+          rect.height <= 0
+        ) {
+          return;
+        }
+
+        const h = Math.ceil(
+          Math.max(el.scrollHeight || 0, el.offsetHeight || 0, rect.height || 0)
+        );
+
+        if (h > bestHeight && h < 3000) {
+          bestHeight = h;
+        }
+      });
+
+      return Math.max(bestHeight + 20, 300);
     };
 
-    const observer = new MutationObserver(() => {
-      setTimeout(updateHeight, 100);
-      setTimeout(updateHeight, 500);
-      setTimeout(updateHeight, 1000);
-    });
+    const applyHeight = () => {
+      const height = getRealHeight();
 
-    observer.observe(this, {
+      this.style.height = `${height}px`;
+      this.style.maxHeight = `${height}px`;
+      wrapper.style.height = `${height}px`;
+      wrapper.style.maxHeight = `${height}px`;
+
+      this.dispatchEvent(
+        new CustomEvent("regiondoResize", {
+          bubbles: true,
+          composed: true,
+          detail: { height },
+        })
+      );
+
+      window.parent?.postMessage(
+        {
+          type: "regiondoResize",
+          height,
+        },
+        "*"
+      );
+    };
+
+    const runResize = () => {
+      setTimeout(applyHeight, 50);
+      setTimeout(applyHeight, 250);
+      setTimeout(applyHeight, 700);
+      setTimeout(applyHeight, 1500);
+    };
+
+    const mutationObserver = new MutationObserver(runResize);
+
+    mutationObserver.observe(this, {
       childList: true,
       subtree: true,
       attributes: true,
       characterData: true,
     });
 
-    setInterval(updateHeight, 1000);
+    const resizeObserver = new ResizeObserver(runResize);
+    resizeObserver.observe(this);
+    resizeObserver.observe(wrapper);
+    resizeObserver.observe(widget);
 
-    setTimeout(updateHeight, 500);
-    setTimeout(updateHeight, 1500);
-    setTimeout(updateHeight, 3000);
+    document.addEventListener("click", runResize, true);
+    window.addEventListener("resize", runResize);
+
+    setInterval(applyHeight, 1000);
+
+    runResize();
   }
 }
 
