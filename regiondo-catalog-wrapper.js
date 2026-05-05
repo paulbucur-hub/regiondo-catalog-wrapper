@@ -3,7 +3,7 @@ class RegiondoCatalogWrapper extends HTMLElement {
     if (this.initialized) return;
     this.initialized = true;
 
-    this.widgetId =
+    const widgetId =
       this.getAttribute("widget-id") ||
       "b7b0addf-ef62-4f4f-9825-9af279a2441c";
 
@@ -13,92 +13,64 @@ class RegiondoCatalogWrapper extends HTMLElement {
     this.style.overflow = "hidden";
 
     this.innerHTML = `
-      <div id="regiondo-wrapper" style="width:100%; overflow:hidden;">
-        <product-catalog-widget widget-id="${this.widgetId}"></product-catalog-widget>
-      </div>
+      <product-catalog-widget widget-id="${widgetId}"></product-catalog-widget>
     `;
 
     this.loadRegiondoScript();
-    this.startAutoResize();
+    this.startHeightWatcher();
   }
 
   loadRegiondoScript() {
-    const existingScript = document.querySelector(
-      'script[src="https://widgets.regiondo.net/catalog/v1/catalog-widget.min.js"]'
-    );
+    const src = "https://widgets.regiondo.net/catalog/v1/catalog-widget.min.js";
 
-    if (existingScript) return;
+    if (document.querySelector(`script[src="${src}"]`)) return;
 
     const script = document.createElement("script");
-    script.src = "https://widgets.regiondo.net/catalog/v1/catalog-widget.min.js";
+    script.src = src;
     script.type = "text/javascript";
     script.async = true;
     document.head.appendChild(script);
   }
 
-  startAutoResize() {
-    const wrapper = this.querySelector("#regiondo-wrapper");
-    const widget = this.querySelector("product-catalog-widget");
+  startHeightWatcher() {
+    const updateHeight = () => {
+      const widget = this.querySelector("product-catalog-widget");
 
-    const resize = () => {
-      let newHeight = 300;
+      let height = 300;
 
-      const shadowRoot = widget?.shadowRoot;
-
-      if (shadowRoot) {
-        const possibleContent = shadowRoot.querySelector(
-          ".regiondo-booking, .regiondo-catalog, .regiondo-widget, main, form"
-        );
-
-        if (possibleContent) {
-          newHeight = possibleContent.scrollHeight;
-        } else {
-          newHeight = shadowRoot.host.scrollHeight;
-        }
-      } else {
-        newHeight = wrapper.scrollHeight;
-      }
-
-      newHeight = Math.max(newHeight, 300);
-
-      this.style.height = `${newHeight}px`;
-      wrapper.style.height = `${newHeight}px`;
-
-      if (window.parent && window.parent !== window) {
-        window.parent.postMessage(
-          {
-            type: "regiondo-widget-resize",
-            height: newHeight,
-          },
-          "*"
+      if (widget) {
+        height = Math.max(
+          widget.scrollHeight,
+          widget.offsetHeight,
+          this.scrollHeight,
+          300
         );
       }
+
+      this.style.height = `${height}px`;
     };
 
     const observer = new MutationObserver(() => {
-      setTimeout(resize, 100);
-      setTimeout(resize, 500);
-      setTimeout(resize, 1000);
+      setTimeout(updateHeight, 100);
+      setTimeout(updateHeight, 500);
+      setTimeout(updateHeight, 1000);
     });
 
     observer.observe(this, {
       childList: true,
       subtree: true,
       attributes: true,
+      characterData: true,
     });
 
-    const resizeObserver = new ResizeObserver(() => {
-      setTimeout(resize, 100);
-    });
+    setInterval(updateHeight, 1000);
 
-    resizeObserver.observe(wrapper);
-
-    setInterval(resize, 700);
-
-    setTimeout(resize, 500);
-    setTimeout(resize, 1500);
-    setTimeout(resize, 3000);
+    setTimeout(updateHeight, 500);
+    setTimeout(updateHeight, 1500);
+    setTimeout(updateHeight, 3000);
   }
 }
 
-customElements.define("regiondo-catalog-wrapper", RegiondoCatalogWrapper);
+if (!customElements.get("regiondo-catalog-wrapper")) {
+  customElements.define("regiondo-catalog-wrapper", RegiondoCatalogWrapper);
+}
